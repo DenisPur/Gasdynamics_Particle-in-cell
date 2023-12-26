@@ -13,10 +13,6 @@ public:
         _data = Array(n, 3);
     }
 
-    int len() {
-        return _n;
-    }
-
     double& operator()(int i, int p) {
         return _data(i, p);
     }
@@ -36,6 +32,10 @@ public:
 
     void move_particles(Array vx, Array vy) {
         //
+    }
+
+    int len() {
+        return _n;
     }
 
     Array& get_data() {

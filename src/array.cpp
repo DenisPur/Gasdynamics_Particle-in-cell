@@ -9,15 +9,15 @@ public:
         _ptr_zero = nullptr;
     }
 
-    Array(int x, int y) {
+    Array(int y, int x) {
         _nx = x;
         _ny = y;
-        _ptr_zero = new double [x*y];
+        _ptr_zero = new double [_nx * _ny];
         zeros();
     }
 
-    double& operator()(int x, int y) {
-        return *(_ptr_zero + _ny * x  + y);
+    double& operator()(int y, int x) {
+        return *(_ptr_zero + _nx * y  + x);
     }
 
     int len_x() {
@@ -29,9 +29,9 @@ public:
     }
 
     void print() {
-        for (int i = 0; i < _nx; i++) {
-            for (int j = 0; j < _ny; j++) {
-                std::cout << operator()(i, j) << ' ';
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                std::cout << operator()(y, x) << ' ';
             }
             std::cout << '\n';
         }
