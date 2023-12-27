@@ -1,5 +1,7 @@
 #pragma once
 #include <iostream>
+#include <fstream>
+#include <string>
 
 class Array {
 public:
@@ -12,8 +14,16 @@ public:
     Array(int y, int x) {
         _nx = x;
         _ny = y;
-        _ptr_zero = new double [_nx * _ny];
+        _ptr_zero = new double[_nx * _ny];
         zeros();
+    }
+
+    // ~Array() {
+    //     delete [] _ptr_zero;
+    // }
+
+    void free_space() {
+        delete [] _ptr_zero;
     }
 
     double& operator()(int y, int x) {
@@ -34,6 +44,30 @@ public:
             sum += *(_ptr_zero + i);
         }
         return sum;
+    }
+
+    double absmax() {
+        double max = 0;
+        for (int i = 0; i < _nx * _ny; i++) {
+            if (std::abs(*(_ptr_zero + i)) > max) {
+                max = std::abs(*(_ptr_zero + i));
+            }
+        }
+        return max;
+    }
+
+    //------------------------------------------------------------------------
+
+    void write_in_file(std::string name) {
+        std::ofstream out(name);
+
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                out << operator()(y, x) << ',';
+            }
+            out << std::endl;
+        }
+        out.close();
     }
 
     void print() {

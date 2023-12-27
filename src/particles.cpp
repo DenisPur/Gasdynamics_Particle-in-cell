@@ -37,6 +37,13 @@ public:
         }
     }
 
+    void add_random_movements(double v_max) {
+        for (int i = 0; i < _n; i++) {
+            _data(i, 3) = v_max * 2 * (rand() / RAND_MAX - 0.5);
+            _data(i, 4) = v_max * 2 * (rand() / RAND_MAX - 0.5);
+        }
+    }
+
     void set_energies(Array inner_energy_array, Array vx_tilda_array, Array vy_tilda_array) {
         for (int i = 0; i < _n; i++) {
             int nx = std::floor(_data(i, 0) / _size);
@@ -68,7 +75,7 @@ public:
                 x = 2 * _x_max - x;
                 vx = - vx;
             }
-            
+
             if (y < 0) {
                 y = - y;
                 vy = - vy;
