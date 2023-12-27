@@ -28,6 +28,14 @@ public:
         return _ny;
     }
 
+    double sum() {
+        double sum = 0;
+        for (int i = 0; i < _nx * _ny; i++) {
+            sum += *(_ptr_zero + i);
+        }
+        return sum;
+    }
+
     void print() {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
