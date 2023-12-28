@@ -62,9 +62,10 @@ public:
         std::ofstream out(name);
 
         for (int y = 0; y < _ny; y++) {
-            for (int x = 0; x < _nx; x++) {
+            for (int x = 0; x < _nx - 1; x++) {
                 out << operator()(y, x) << ',';
             }
+            out << operator()(y, _nx - 1);
             out << std::endl;
         }
         out.close();

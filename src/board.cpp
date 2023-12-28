@@ -97,8 +97,8 @@ public:
                 double sA = (_gamma_A - 1) * _mass_A(y, x) * _energy_A(y, x) + _eps;
                 double sB = (_gamma_B - 1) * _mass_B(y, x) * _energy_B(y, x) + _eps;
                 
-                double sigmaA = sB / (sA + sB);
-                _pressure(y, x) = sA * sigmaA /(_size * _size);
+                double sigmaA = sA / (sA + sB);
+                _pressure(y, x) = sA / (sigmaA * _size * _size);
             }
         }
 
@@ -333,6 +333,14 @@ public:
         _energy_A.write_in_file(name);
         name = "./results/energy_b" + std::to_string(shot) + ".txt";
         _energy_B.write_in_file(name);
+    }
+
+    void write_masses(int shot) {
+        std::string name;
+        name = "./results/mass_a" + std::to_string(shot) + ".txt";
+        _mass_A.write_in_file(name);
+        name = "./results/mass_b" + std::to_string(shot) + ".txt";
+        _mass_B.write_in_file(name);
     }
 
     void write_pressure(int shot) {

@@ -17,6 +17,7 @@ void Board_2IdealGases::initiate_energy_test_function_01() {
 void make_n_steps(Board_2IdealGases* b, int n) {
     double tau = 0.0001;
     double time = tau;
+    int shot = 0;
 
     std::ofstream timestems("./results/timesteps.txt");
 
@@ -25,9 +26,9 @@ void make_n_steps(Board_2IdealGases* b, int n) {
         b->re_v_tilda(tau);
 
         tau = b->get_tau_max() / 2;
-        std::cout << "# tau :" << tau << "\n";
         time += tau;
-        timestems << time << '\n';
+        
+        std::cout << "# tau :" << tau << "\n";
         
         b->re_w_energy();
         b->re_v_shifted();
@@ -37,9 +38,14 @@ void make_n_steps(Board_2IdealGases* b, int n) {
         b->re_v_and_mass();
         b->re_energy();
         
-        b->write_energies(i);
-        b->write_pressure(i);
-        b->write_v(i);
+        if (i % 10 == 0) {
+            timestems << time << '\n';
+            b->write_masses(shot);
+            b->write_energies(shot);
+            b->write_pressure(shot);
+            b->write_v(shot);
+            shot++;
+        }
     }
     timestems.close();
 }
@@ -52,7 +58,7 @@ int main() {
     b.initiate_energy_test_function_01();
     b.re_mass();
 
-    make_n_steps(&b, 10);
+    make_n_steps(&b, 101);
 
     return 0;
 }
