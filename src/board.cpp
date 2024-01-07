@@ -49,7 +49,7 @@ public:
 
     //------------------------------------------------------------------------
 
-    void add_particles_A(int particles_number, double particle_mass, double adiabatic_index) {
+    void add_particles_A_evenly_distribute(int particles_number, double particle_mass, double adiabatic_index) {
         _gamma_A = adiabatic_index;
         _particles_A = Particles(particles_number);
         _particles_A.set_mass_for_each(particle_mass);
@@ -58,7 +58,7 @@ public:
         _particles_A.add_random_movements(0.05);
     }
     
-    void add_particles_B(int particles_number, double particle_mass, double adiabatic_index) {
+    void add_particles_B_evenly_distribute(int particles_number, double particle_mass, double adiabatic_index) {
         _gamma_B = adiabatic_index;
         _particles_B = Particles(particles_number);
         _particles_B.set_mass_for_each(particle_mass);
@@ -71,34 +71,24 @@ public:
 
     void initiate_energy_test_function_01();
 
+    void initiate_energy_test_function_02();
+
     //------------------------------------------------------------------------
 
-    void re_mass() {
-        _mass_A.zeros();
-        for (int i = 0; i < _particles_A.len(); i++) {
-            int nx = std::floor(_particles_A(i, 0) / _size);
-            int ny = std::floor(_particles_A(i, 1) / _size);
-            _mass_A(ny, nx) += _particles_A(i, 2);
-        }
-
-        _mass_B.zeros();
-        for (int i = 0; i < _particles_B.len(); i++) {
-            int nx = std::floor(_particles_B(i, 0) / _size);
-            int ny = std::floor(_particles_B(i, 1) / _size);
-            _mass_B(ny, nx) += _particles_B(i, 2);
-        }
+    double get_tau_max() {
+        double vx_max = _vx.absmax();
+        double vy_max = _vy.absmax();
+        double softening = 1.0;
+        return _size / (vx_max + vy_max + softening);
     }
-
-    //------------------------------------------------------------------------
 
     void re_pressure() {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                double sA = (_gamma_A - 1) * _mass_A(y, x) * _energy_A(y, x) + _eps;
-                double sB = (_gamma_B - 1) * _mass_B(y, x) * _energy_B(y, x) + _eps;
+                double sA = (_gamma_A - 1) * _mass_A(y, x) * _energy_A(y, x);
+                double sB = (_gamma_B - 1) * _mass_B(y, x) * _energy_B(y, x);
                 
-                double sigmaA = sA / (sA + sB);
-                _pressure(y, x) = sA / (sigmaA * _size * _size);
+                _pressure(y, x) = (sA + sB) / (_size * _size);
             }
         }
 
@@ -127,24 +117,20 @@ public:
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
                 double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size) + _eps;
-                _vx_tilda(y, x) = _vx(y, x) + tau / rho / _size * (_pressure_shifted_x(y, x) - _pressure_shifted_x(y, x + 1));
-                _vy_tilda(y, x) = _vy(y, x) + tau / rho / _size * (_pressure_shifted_y(y, x) - _pressure_shifted_y(y + 1, x));
+                _vx_tilda(y, x) = _vx(y, x) + \
+                    tau / rho / _size * (_pressure_shifted_x(y, x) - _pressure_shifted_x(y, x + 1));
+                _vy_tilda(y, x) = _vy(y, x) + \
+                    tau / rho / _size * (_pressure_shifted_y(y, x) - _pressure_shifted_y(y + 1, x));
             }
         }
-    }
-
-    double get_tau_max() {
-        double vx_max = _vx_tilda.absmax();
-        double vy_max = _vy_tilda.absmax();
-        double soft = 1.0;
-        return _size / (vx_max + vy_max + soft);
     }
 
     void re_w_energy() {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
                 double potential = _mass_A(y, x) * _energy_A(y, x) + _mass_B(y, x) * _energy_B(y, x);
-                double kinetic = (_mass_A(y, x) + _mass_B(y, x)) * (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                double kinetic = (_mass_A(y, x) + _mass_B(y, x)) * \
+                    (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
                 _w_energy(y, x) = (potential + kinetic) / (_size*_size);
             }
         }
@@ -190,8 +176,10 @@ public:
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
                 double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size) + _eps;
-                double energy_tilda = _w_energy_tilda(y, x) / rho - (_vx_tilda(y, x)*_vx_tilda(y, x) + _vy_tilda(y, x)*_vy_tilda(y, x)) / 2;
-                double delta_energy = energy_tilda - (_energy_A(y, x) * _mass_A(y, x) + _energy_B(y, x) * _mass_B(y, x)) / (_mass_A(y, x) + _mass_B(y, x));
+                double energy_tilda = _w_energy_tilda(y, x) / rho - \
+                    (_vx_tilda(y, x)*_vx_tilda(y, x) + _vy_tilda(y, x)*_vy_tilda(y, x)) / 2;
+                double delta_energy = energy_tilda - \
+                    (_energy_A(y, x) * _mass_A(y, x) + _energy_B(y, x) * _mass_B(y, x)) / (_mass_A(y, x) + _mass_B(y, x));
                 _energy_A_tilda(y, x) = _energy_A(y, x) + delta_energy;                
                 _energy_B_tilda(y, x) = _energy_B(y, x) + delta_energy;    
             }
@@ -214,6 +202,9 @@ public:
         for (int i = 0; i < _particles_A.len(); i++) {
             int x = std::floor(_particles_A(i, 0) / _size);
             int y = std::floor(_particles_A(i, 1) / _size);
+            if (x == -2147483648) {
+                std::cout << _particles_A(i, 0) << '\n';
+            }
 
             _mass_A(y, x) += _particles_A(i, 2);
             impuls_x(y, x) += _particles_A(i, 3) * _particles_A(i, 2);
@@ -335,6 +326,14 @@ public:
         _energy_B.write_in_file(name);
     }
 
+    void write_w_energies(int shot) {
+        std::string name;
+        name = "./results/energy" + std::to_string(shot) + ".txt";
+        _w_energy.write_in_file(name);
+        name = "./results/energy_tilda" + std::to_string(shot) + ".txt";
+        _w_energy_tilda.write_in_file(name);
+    }
+
     void write_masses(int shot) {
         std::string name;
         name = "./results/mass_a" + std::to_string(shot) + ".txt";
@@ -355,6 +354,14 @@ public:
         _vx.write_in_file(name);
         name = "./results/vy" + std::to_string(shot) + ".txt";
         _vy.write_in_file(name);
+    }
+
+    void write_v_tilda(int shot) {
+        std::string name;
+        name = "./results/vx_tilda" + std::to_string(shot) + ".txt";
+        _vx_tilda.write_in_file(name);
+        name = "./results/vy_tilda" + std::to_string(shot) + ".txt";
+        _vy_tilda.write_in_file(name);
     }
 
 private:

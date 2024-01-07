@@ -56,6 +56,16 @@ public:
         return max;
     }
 
+    double min() {
+        double min = 0;
+        for (int i = 0; i < _nx * _ny; i++) {
+            if (*(_ptr_zero + i) < min) {
+                min = (*(_ptr_zero + i));
+            }
+        }
+        return min;
+    }
+
     //------------------------------------------------------------------------
 
     void write_in_file(std::string name) {

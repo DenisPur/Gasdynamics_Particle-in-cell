@@ -30,17 +30,31 @@ public:
         _size = size;
     }
 
-    void evenly_distribute() {
-        for (int i = 0; i < _n; i++) {
-            _data(i, 0) = _x_max * rand() / RAND_MAX;
-            _data(i, 1) = _y_max * rand() / RAND_MAX;
+    void evenly_distribute(int i_from = -1, int i_to = -1) {
+        if (i_from == -1) {
+            for (int i = 0; i < _n; i++) {
+                _data(i, 0) = _x_max * rand() / RAND_MAX;
+                _data(i, 1) = _y_max * rand() / RAND_MAX;
+            }
+        } else {
+            for (int i = i_from; i < i_to; i++) {
+                _data(i, 0) = _x_max * rand() / RAND_MAX;
+                _data(i, 1) = _y_max * rand() / RAND_MAX;
+            }        
         }
     }
 
-    void add_random_movements(double v_max) {
-        for (int i = 0; i < _n; i++) {
-            _data(i, 3) = v_max * 2 * (rand() / RAND_MAX - 0.5);
-            _data(i, 4) = v_max * 2 * (rand() / RAND_MAX - 0.5);
+    void add_random_movements(double v_max, int i_from = -1, int i_to = -1) {
+        if (i_from == -1) {
+            for (int i = 0; i < _n; i++) {
+                _data(i, 3) = v_max * 2 * (rand() / RAND_MAX - 0.5);
+                _data(i, 4) = v_max * 2 * (rand() / RAND_MAX - 0.5);
+            }
+        } else {
+            for (int i = i_from; i < i_to; i++) {
+                _data(i, 3) = v_max * 2 * (rand() / RAND_MAX - 0.5);
+                _data(i, 4) = v_max * 2 * (rand() / RAND_MAX - 0.5);
+            }
         }
     }
 
@@ -53,6 +67,18 @@ public:
             _data(i, 5) = _data(i, 2) * (inner_energy_array(ny, nx) + (vx*vx + vy*vy) / 2);
         }
     }
+
+    void set_coordinates(int i, double x, double y) {
+        _data(i, 0) = x;
+        _data(i, 1) = y;
+    }
+
+    void set_velocity(int i, double vx, double vy) {
+        _data(i, 3) = vx;
+        _data(i, 4) = vy;
+    }
+
+    //------------------------------------------------------------------------
 
     void move_particles(Array vx_array, Array vy_array, Array vx_tilda_array, Array vy_tilda_array, double tau) {
         for (int i = 0; i < _n; i++) {
