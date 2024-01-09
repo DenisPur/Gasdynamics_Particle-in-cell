@@ -1,80 +1,469 @@
 #pragma once
-#include <vector>
-#include <tuple>
-#include <cmath>
-#include <stdexcept>
 #include <iostream>
+#include <cmath>
+#include <algorithm>
+#include <string>
+#include "array.cpp"
+#include "particles.cpp"
 
-#include "pnc.cpp"
-
-class Board {
+class Board_2IdealGases {
 public:
-    Board(int x_size, int y_size, double cell_size) {
-        _num_x = x_size;
-        _num_y = y_size;
-        _cell_size = cell_size;
+    Board_2IdealGases(int n, double cell_size) : Board_2IdealGases(n, n, cell_size) {}
 
-        _cells.resize(_num_y);
-        for (std::vector<Cell> &row : _cells) {
-            row.resize(_num_x);
+    Board_2IdealGases(int ny, int nx, double cell_size) {
+        _ny = ny;
+        _nx = nx;
+        _size = cell_size;
+
+        _mass_A = Array(_ny, _nx);
+        _energy_A = Array(_ny, _nx);
+        _energy_A_tilda = Array(_nx, _ny); 
+
+        _mass_B = Array(_ny, _nx);
+        _energy_B = Array(_ny, _nx);
+        _energy_B_tilda = Array(_nx, _ny); 
+
+        _pressure = Array(_ny, _nx);
+        _pressure_shifted_x = Array(_ny, _nx + 1);
+        _pressure_shifted_y = Array(_ny + 1, _nx);
+
+        _w_energy = Array(_ny, _nx); 
+        _w_energy_tilda = Array(_ny, _nx);
+
+        _vx = Array(_ny, _nx); 
+        _vy = Array(_ny, _nx);
+        _vx_tilda = Array(_ny, _nx); 
+        _vy_tilda = Array(_ny, _nx);
+        _vx_shifted = Array(_ny, _nx + 1);
+        _vy_shifted = Array(_ny + 1, _nx);
+    }
+
+    //------------------------------------------------------------------------
+
+    Array* get_masses_A() {
+        return &_mass_A;
+    }
+
+    Array* get_masses_B() {
+        return &_mass_B;
+    }
+
+    //------------------------------------------------------------------------
+
+    void add_particles_A_evenly_distribute(int particles_number, double particle_mass, double adiabatic_index) {
+        _gamma_A = adiabatic_index;
+        _particles_A = Particles(particles_number);
+        _particles_A.set_mass_for_each(particle_mass);
+        _particles_A.set_borders(_size * _nx, _size * _ny, _size);
+        _particles_A.evenly_distribute();
+        _particles_A.add_random_movements(0.05);
+    }
+    
+    void add_particles_B_evenly_distribute(int particles_number, double particle_mass, double adiabatic_index) {
+        _gamma_B = adiabatic_index;
+        _particles_B = Particles(particles_number);
+        _particles_B.set_mass_for_each(particle_mass);
+        _particles_B.set_borders(_size * _nx, _size * _ny, _size);
+        _particles_B.evenly_distribute();
+        _particles_B.add_random_movements(0.05);
+    }
+
+    //------------------------------------------------------------------------
+
+    void initiate_energy_test_function_01();
+
+    void initiate_energy_test_function_02();
+
+    //------------------------------------------------------------------------
+
+    double get_tau_max() {
+        double vx_max = _vx.absmax();
+        double vy_max = _vy.absmax();
+        double softening = 1.0;
+        return _size / (vx_max + vy_max + softening);
+    }
+
+    void re_pressure() {
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                double sA = (_gamma_A - 1) * _mass_A(y, x) * _energy_A(y, x);
+                double sB = (_gamma_B - 1) * _mass_B(y, x) * _energy_B(y, x);
+                
+                _pressure(y, x) = std::max(0.0, (sA + sB) / (_size * _size));
+            }
         }
 
-        for (int ix = 0; ix < _num_x; ix++) {
-            for (int iy = 0; iy < _num_y; iy++) {
-                _cells[iy][ix].set_indexes(ix, iy);
+        for (int y = 0; y < _ny; y++) {
+            _pressure_shifted_x(y, 0) = _pressure(y, 0);
+            for (int x = 1; x < _nx; x++) {
+                if (_pressure(y, x - 1) * _pressure(y, x) <= 0) {
+                    _pressure_shifted_x(y, x) = 0;
+                } else {
+                    _pressure_shifted_x(y, x) = (_pressure(y, x - 1) + _pressure(y, x)) / 2;
+                }
+            }
+            _pressure_shifted_x(y, _nx) = _pressure(y, _nx - 1);
+        }
+
+        for (int x = 0; x < _nx; x++) {
+            _pressure_shifted_y(0, x) = _pressure(0, x);
+        }
+        for (int y = 1; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                if (_pressure(y - 1, x) * _pressure(y, x) <= 0) {
+                    _pressure_shifted_y(y, x) = 0;
+                } else {
+                    _pressure_shifted_y(y, x) = (_pressure(y - 1, x) + _pressure(y, x)) / 2;
+                }
+            }
+        }
+        for (int x = 0; x < _nx; x++) {
+            _pressure_shifted_y(_ny, x) = _pressure(_ny - 1, x);
+        }
+    }
+
+    void re_v_tilda(double tau) {
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                if (_mass_A(y, x) + _mass_B(y, x) < 1e-6) {
+                    _vx_tilda(y, x) = 0;
+                    _vy_tilda(y, x) = 0;
+                } else {
+                    double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size);
+                    _vx_tilda(y, x) = _vx(y, x) + tau / rho / _size * (
+                        _pressure_shifted_x(y, x) - _pressure_shifted_x(y, x + 1));
+                    _vy_tilda(y, x) = _vy(y, x) + tau / rho / _size * (
+                        _pressure_shifted_y(y, x) - _pressure_shifted_y(y + 1, x));
+                }
             }
         }
     }
 
-    Cell *get_cell_by_coordinates(double x, double y) {
-        if ((x < 0) || (x > _num_x * _cell_size) || (y < 0) || (y > _num_y * _cell_size)) {
-            std::cout << "x=" << x << " y=" << y << " not in ";
-            std::cout << "[0, " << _num_x * _cell_size << "], [0, " << _num_y * _cell_size << "]" << "\n";
-            throw std::invalid_argument( "get_cell() : (x, y) out of the bounds" );
+    void re_w_energy() {
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                double potential = _mass_A(y, x) * _energy_A(y, x) + _mass_B(y, x) * _energy_B(y, x);
+                double kinetic = (_mass_A(y, x) + _mass_B(y, x)) * (
+                    _vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                _w_energy(y, x) = (potential + kinetic) / (_size*_size);
+            }
         }
-        if (x == _num_x * _cell_size) {
-            x -= 1e-9;
+    }
+
+    void re_v_shifted() {
+        _vx_shifted.zeros();
+        for (int y = 0; y < _ny; y++) {
+            _vx_shifted(y, 0) = 0;
+            for (int x = 1; x < _nx; x++) {
+                _vx_shifted(y, x) = (_vx(y, x - 1) + _vx(y, x) + _vx_tilda(y, x - 1) + _vx_tilda(y, x)) / 4;
+            }
+            _vx_shifted(y, _nx) = 0;
         }
-        if (y == _num_y * _cell_size) {
-            y -= 1e-9;
+
+        _vy_shifted.zeros();
+        for (int x = 0; x < _nx; x++) {
+            _vy_shifted(0, x) = 0;
+        }
+        for (int y = 1; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                _vy_shifted(y, x) = (_vy(y - 1, x) + _vy(y, x) + _vy_tilda(y - 1, x) + _vy_tilda(y, x)) / 4;
+            }
+        }
+        for (int x = 0; x < _nx; x++) {
+            _vy_shifted(_ny, x) = 0;
+        }
+    }
+
+    void re_w_energy_tilda(double tau) {
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                _w_energy_tilda(y, x) = _w_energy(y, x) + tau / _size * 
+                    ( _vx_shifted(y, x) * _pressure_shifted_x(y, x)
+                    + _vy_shifted(y, x) * _pressure_shifted_y(y, x)
+                    - _vx_shifted(y, x + 1) * _pressure_shifted_x(y, x + 1)
+                    - _vy_shifted(y + 1, x) * _pressure_shifted_y(y + 1, x) );
+            }
+        }
+    }
+
+    void re_energy_tilda() {
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                if (_mass_A(y, x) + _mass_B(y, x) <= 0.0000005) {
+                    _energy_A_tilda(y, x) = 0;
+                    _energy_B_tilda(y, x) = 0;
+                    _vx_tilda(y, x) = 0;
+                    _vy_tilda(y, x) = 0;
+                    continue;
+                }
+
+                double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size);
+                double energy_tilda = _w_energy_tilda(y, x) / rho - (
+                    _vx_tilda(y, x)*_vx_tilda(y, x) + _vy_tilda(y, x)*_vy_tilda(y, x)) / 2;
+                double energy = _w_energy(y, x) / rho - (
+                    _vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                double delta_energy = energy_tilda - energy;
+
+                _energy_A_tilda(y, x) = _energy_A(y, x) + delta_energy;                
+                _energy_B_tilda(y, x) = _energy_B(y, x) + delta_energy;    
+            }
         }
 
-        int pos_x = std::floor(x / _cell_size);
-        int pos_y = std::floor(y / _cell_size);
-        return & _cells[pos_y][pos_x]; 
+        double total_energy = 0;
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                double cell_energy = 0;
+                cell_energy += (_mass_A(y,x) + _mass_B(y,x)) * (_vx_tilda(y,x)*_vx_tilda(y,x) + _vy_tilda(y,x)*_vy_tilda(y,x))/2;
+                cell_energy += _mass_A(y,x) * _energy_A_tilda(y,x) + _mass_B(y,x) * _energy_B_tilda(y,x);
+                total_energy += cell_energy;
+                if (std::abs(cell_energy / (_size * _size) - _w_energy_tilda(y, x)) > 1.0E-7) {
+                    std::cout << "!\n";
+                    std::cout << (_mass_A(y,x) + _mass_B(y,x)) << "\n";
+                    std::cout << _pressure(y, x) << "\n";
+                    std::cout << cell_energy / (_size * _size) << "\n";
+                    std::cout << _w_energy_tilda(y, x) << "\n";
+                    std::cout << _w_energy(y, x) << "\n";
+                }
+            }
+        }
     }
 
-    Cell *get_cell_by_number(int ix, int iy) {
-        return & _cells[iy][ix];
+    void move_particles(double tau) {
+        _particles_A.set_energies_and_move(_vx, _vy, _vx_tilda, _vy_tilda, _energy_A_tilda, tau);
+        _particles_B.set_energies_and_move(_vx, _vy, _vx_tilda, _vy_tilda, _energy_B_tilda, tau);
     }
 
-    void reserve_particles(int n) {
-        _particles.reserve(n);
+    void re_v_and_mass() {
+        Array impuls_x = Array(_ny, _nx);
+        Array impuls_y = Array(_ny, _nx);
+
+        _mass_A.zeros();
+        for (int i = 0; i < _particles_A.len(); i++) {
+            int x = std::floor(_particles_A(i, 0) / _size);
+            int y = std::floor(_particles_A(i, 1) / _size);
+
+            _mass_A(y, x) += _particles_A(i, 2);
+            impuls_x(y, x) += _particles_A(i, 3) * _particles_A(i, 2);
+            impuls_y(y, x) += _particles_A(i, 4) * _particles_A(i, 2);
+        }
+
+        _mass_B.zeros();
+        for (int i = 0; i < _particles_B.len(); i++) {
+            int x = std::floor(_particles_B(i, 0) / _size);
+            int y = std::floor(_particles_B(i, 1) / _size);
+
+            _mass_B(y, x) += _particles_B(i, 2);
+            impuls_x(y, x) += _particles_B(i, 3) * _particles_B(i, 2);
+            impuls_y(y, x) += _particles_B(i, 4) * _particles_B(i, 2);
+        }
+
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                if (_mass_A(y, x) + _mass_B(y, x) <= 0.0000005){
+                    _vx(y, x) = 0;
+                    _vy(y, x) = 0;
+                } else {
+                    _vx(y, x) = impuls_x(y, x) / (_mass_A(y, x) + _mass_B(y, x));
+                    _vy(y, x) = impuls_y(y, x) / (_mass_A(y, x) + _mass_B(y, x));
+                }
+            }
+        }
+
+        impuls_x.free_space();
+        impuls_y.free_space();
     }
 
-    void add_default_particle(double x, double y) {
-        Particle *particle = & _particles.emplace_back(Particle{});
-        particle->set_coordinates(x, y);
-        Cell *cell = get_cell_by_coordinates(x, y);
-        particle->link_cell(cell);
-        cell->add_particle(particle);
+    void re_energy() {
+        Array w_tmp_A(_ny, _nx);
+        Array w_tmp_B(_ny, _nx);
+
+        for (int i = 0; i < _particles_A.len(); i++) {
+            int x = std::floor(_particles_A(i, 0) / _size);
+            int y = std::floor(_particles_A(i, 1) / _size);
+
+            w_tmp_A(y, x) += _particles_A(i, 5); // NOT DIVIDING BY H^2
+        }
+
+        for (int i = 0; i < _particles_B.len(); i++) {
+            int x = std::floor(_particles_B(i, 0) / _size);
+            int y = std::floor(_particles_B(i, 1) / _size);
+
+            w_tmp_B(y, x) += _particles_B(i, 5); // NOT DIVIDING BY H^2
+        }
+
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                if (_mass_A(y, x) < 0.0000005) {
+                    _energy_A(y, x) = 0;
+                } else {
+                    _energy_A(y, x) = w_tmp_A(y, x) / _mass_A(y, x) - (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                }
+
+                if (_mass_B(y, x) < 0.0000005) {
+                    _energy_B(y, x) = 0;
+                } else {
+                    _energy_B(y, x) = w_tmp_B(y, x) / _mass_B(y, x) - (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                }
+                
+                if (_energy_A(y, x) < 0 || _energy_B(y, x) < 0) {
+                    double energy = (w_tmp_A(y, x) + w_tmp_B(y, x)) / (_mass_A(y, x) + _mass_B(y, x)) - 
+                                     (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                    _energy_A(y, x) = energy;
+                    _energy_B(y, x) = energy;       
+                }
+            }
+        }
+
+        double total_energy = 0;
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                total_energy += (_mass_A(y,x) + _mass_B(y,x)) * (_vx(y,x)*_vx(y,x) + _vy(y,x)*_vy(y,x))/2;
+                total_energy += _mass_A(y,x) * _energy_A(y,x) + _mass_B(y,x) * _energy_B(y,x);
+            }
+        }
+
+        w_tmp_A.free_space();
+        w_tmp_B.free_space();
     }
 
-    void move_particle(Particle* particle, double new_x, double new_y) {
-        Cell* new_cell = get_cell_by_coordinates(new_x, new_y);
-        particle->get_cell()->delete_particle(particle);
-        new_cell->add_particle(particle);
-        particle->link_cell(new_cell);
+    //------------------------------------------------------------------------
+
+    void print_masses() {
+        std::cout << "# masses A:\n";
+        _mass_A.print();
+        std::cout << "# sum :" << _mass_A.sum() << "\n";
+        std::cout << "# masses B:\n";
+        _mass_B.print();
+        std::cout << "# sum :" << _mass_B.sum() << "\n";
     }
 
-    std::vector<Particle>* get_particles() {
-        return & _particles;
+    void print_pressures(bool shifted = false) {
+        std::cout << "# pressure :\n";
+        _pressure.print();
+        if (shifted) {
+            std::cout << "# shifted x :\n";
+            _pressure_shifted_x.print();
+            std::cout << "# shifted y\n";
+            _pressure_shifted_y.print();
+        }
+    }
+
+    void print_v_tilda() {
+        std::cout << "vx tilda :\n";
+        _vx_tilda.print();
+        std::cout << "vy tilda :\n";
+        _vy_tilda.print();
+    }
+
+    void print_v(bool shifted = false) {
+        std::cout << "# vx :\n";
+        _vx.print();
+        std::cout << "# vy :\n";
+        _vy.print();
+        if (shifted) {
+            std::cout << "# shifted x :\n";
+            _vx_shifted.print();
+            std::cout << "# shifted y :\n";
+            _vy_shifted.print();
+        }
+    }
+
+    void print_energies(bool full = false) {
+        if (full) {
+            std::cout << "# energies :\n";
+            _w_energy.print();
+        }
+        std::cout << _w_energy.sum() << "\n";
+    }
+
+    void print_cell_state(int x, int y) {
+        std::cout << "# cell state\n";
+        std::cout << "  x:" << x << ", y:" << y << '\n';
+        std::cout << " MA:" << _mass_A(y, x) << ", MB:" << _mass_B(y, x) << '\n';
+        std::cout << " EA:" << _energy_A(y, x) << ", EB:" << _energy_B(y, x) << '\n';
+        std::cout << "  P:" << _pressure(y, x) << '\n';
+        std::cout << " P(x-1/2):" << _pressure_shifted_x(y, x) << ", P(x+1/2):" << _pressure_shifted_x(y, x + 1) << '\n';
+        std::cout << " vx:" << _vx(y, x) << '\n';
+        std::cout << " vx(x-1/2):" << _vx_shifted(y, x) << ", vx(x+1/2):" << _vx_shifted(y, x + 1) << '\n';
+    }
+
+    //------------------------------------------------------------------------
+
+    void write_energies(int shot) {
+        std::string name;
+        name = "./results/energy_a" + std::to_string(shot) + ".txt";
+        _energy_A.write_in_file(name);
+        name = "./results/energy_b" + std::to_string(shot) + ".txt";
+        _energy_B.write_in_file(name);
+    }
+
+    void write_w_energies(int shot) {
+        std::string name;
+        name = "./results/energy" + std::to_string(shot) + ".txt";
+        _w_energy.write_in_file(name);
+        name = "./results/energy_tilda" + std::to_string(shot) + ".txt";
+        _w_energy_tilda.write_in_file(name);
+    }
+
+    void write_masses(int shot) {
+        std::string name;
+        name = "./results/mass_a" + std::to_string(shot) + ".txt";
+        _mass_A.write_in_file(name);
+        name = "./results/mass_b" + std::to_string(shot) + ".txt";
+        _mass_B.write_in_file(name);
+    }
+
+    void write_pressure(int shot) {
+        std::string name;
+        name = "./results/pressure" + std::to_string(shot) + ".txt";
+        _pressure.write_in_file(name);
+    }
+
+    void write_v(int shot) {
+        std::string name;
+        name = "./results/vx" + std::to_string(shot) + ".txt";
+        _vx.write_in_file(name);
+        name = "./results/vy" + std::to_string(shot) + ".txt";
+        _vy.write_in_file(name);
+    }
+
+    void write_v_tilda(int shot) {
+        std::string name;
+        name = "./results/vx_tilda" + std::to_string(shot) + ".txt";
+        _vx_tilda.write_in_file(name);
+        name = "./results/vy_tilda" + std::to_string(shot) + ".txt";
+        _vy_tilda.write_in_file(name);
     }
 
 private:
-    std::vector<std::vector<Cell>> _cells;
-    std::vector<Particle> _particles;
-    int _num_x;
-    int _num_y;
-    double _cell_size;
+    double _size;
+    double _eps = 0;
+    int _nx;
+    int _ny;
+
+    Particles _particles_A;
+    Array _mass_A;
+    Array _energy_A;
+    Array _energy_A_tilda; 
+    double _gamma_A;
+
+    Particles _particles_B;
+    Array _mass_B;
+    Array _energy_B;
+    Array _energy_B_tilda;
+    double _gamma_B;
+
+    Array _pressure;
+    Array _pressure_shifted_x;
+    Array _pressure_shifted_y;
+
+    Array _w_energy;
+    Array _w_energy_tilda;
+
+    Array _vx;
+    Array _vy;
+    Array _vx_tilda;
+    Array _vy_tilda;
+    Array _vx_shifted;
+    Array _vy_shifted;
 };

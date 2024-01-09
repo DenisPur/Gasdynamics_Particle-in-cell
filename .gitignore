@@ -1,3 +1,5 @@
 /materials/*
 /build/*
 .vscode
+/results/
+/graphics/
