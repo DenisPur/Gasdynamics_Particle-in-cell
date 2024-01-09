@@ -68,6 +68,15 @@ public:
 
     //------------------------------------------------------------------------
 
+
+    void zeros() {
+        for (int i = 0; i < _nx * _ny; i++) {
+            *(_ptr_zero + i) = 0.0;
+        }
+    }
+
+    //------------------------------------------------------------------------
+
     void write_in_file(std::string name) {
         std::ofstream out(name);
 
@@ -87,12 +96,6 @@ public:
                 std::cout << operator()(y, x) << ' ';
             }
             std::cout << '\n';
-        }
-    }
-
-    void zeros() {
-        for (int i = 0; i < _nx * _ny; i++) {
-            *(_ptr_zero + i) = 0.0;
         }
     }
 

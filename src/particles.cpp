@@ -7,54 +7,27 @@ public:
     Particles() {
         _n = 0;
         _data = Array();
+        _x_max = 0;
+        _y_max = 0;
+        _size = 0;
     }
 
-    Particles(int n) {
+    Particles(int n, int nx, int ny, double size) {
         _n = n;
         _data = Array(n, 6);
+        _size = size;
+        _x_max = size * nx;
+        _y_max = size * ny;
     }
 
-    double& operator()(int number, int property) {
-        return _data(number, property);
+    double& operator()(int i, int property) {
+        // properties: [x_i, y_i, m_i, vx_i, vy_i, eps_i]
+        return _data(i, property);
     }
 
     void set_mass_for_each(double m) {
         for (int i = 0; i < _n; i++) {
             _data(i, 2) = m;
-        }
-    }
-
-    void set_borders(double x_max, double y_max, double size) {
-        _x_max = x_max;
-        _y_max = y_max;
-        _size = size;
-    }
-
-    void evenly_distribute(int i_from = -1, int i_to = -1) {
-        if (i_from == -1) {
-            for (int i = 0; i < _n; i++) {
-                _data(i, 0) = _x_max * rand() / RAND_MAX;
-                _data(i, 1) = _y_max * rand() / RAND_MAX;
-            }
-        } else {
-            for (int i = i_from; i < i_to; i++) {
-                _data(i, 0) = _x_max * rand() / RAND_MAX;
-                _data(i, 1) = _y_max * rand() / RAND_MAX;
-            }        
-        }
-    }
-
-    void add_random_movements(double v_max, int i_from = -1, int i_to = -1) {
-        if (i_from == -1) {
-            for (int i = 0; i < _n; i++) {
-                _data(i, 3) += v_max * 2 * (rand() / RAND_MAX - 0.5);
-                _data(i, 4) += v_max * 2 * (rand() / RAND_MAX - 0.5);
-            }
-        } else {
-            for (int i = i_from; i < i_to; i++) {
-                _data(i, 3) += v_max * 2 * (rand() / RAND_MAX - 0.5);
-                _data(i, 4) += v_max * 2 * (rand() / RAND_MAX - 0.5);
-            }
         }
     }
 
@@ -66,6 +39,10 @@ public:
     void set_velocity(int i, double vx, double vy) {
         _data(i, 3) = vx;
         _data(i, 4) = vy;
+    }
+
+    int len() {
+        return _n;
     }
 
     //------------------------------------------------------------------------
@@ -95,7 +72,7 @@ public:
                 x = 2 * _x_max - x;
                 vx = - vx;
                 if (x == _x_max) {
-                    x = x - 0.001;
+                    x = x - _size / 1000;
                 }
             }
 
@@ -106,7 +83,7 @@ public:
                 y = 2 * _y_max - y;
                 vy = - vy;
                 if (y == _y_max) {
-                    y = y - 0.001;
+                    y = y - _size / 1000;
                 }
             }
 
@@ -117,12 +94,32 @@ public:
         }
     }
 
-    int len() {
-        return _n;
+    void evenly_distribute(int i_from = -1, int i_to = -1) {
+        if (i_from == -1) {
+            for (int i = 0; i < _n; i++) {
+                _data(i, 0) = _x_max * rand() / RAND_MAX;
+                _data(i, 1) = _y_max * rand() / RAND_MAX;
+            }
+        } else {
+            for (int i = i_from; i < i_to; i++) {
+                _data(i, 0) = _x_max * rand() / RAND_MAX;
+                _data(i, 1) = _y_max * rand() / RAND_MAX;
+            }        
+        }
     }
 
-    Array& get_data() {
-        return _data; 
+    void add_random_movements(double v_max, int i_from = -1, int i_to = -1) {
+        if (i_from == -1) {
+            for (int i = 0; i < _n; i++) {
+                _data(i, 3) += v_max * 2 * (rand() / RAND_MAX - 0.5);
+                _data(i, 4) += v_max * 2 * (rand() / RAND_MAX - 0.5);
+            }
+        } else {
+            for (int i = i_from; i < i_to; i++) {
+                _data(i, 3) += v_max * 2 * (rand() / RAND_MAX - 0.5);
+                _data(i, 4) += v_max * 2 * (rand() / RAND_MAX - 0.5);
+            }
+        }
     }
 
 private:

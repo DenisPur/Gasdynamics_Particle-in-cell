@@ -40,39 +40,106 @@ public:
 
     //------------------------------------------------------------------------
 
-    Array* get_masses_A() {
-        return &_mass_A;
-    }
-
-    Array* get_masses_B() {
-        return &_mass_B;
-    }
-
-    //------------------------------------------------------------------------
-
-    void add_particles_A_evenly_distribute(int particles_number, double particle_mass, double adiabatic_index) {
-        _gamma_A = adiabatic_index;
-        _particles_A = Particles(particles_number);
-        _particles_A.set_mass_for_each(particle_mass);
-        _particles_A.set_borders(_size * _nx, _size * _ny, _size);
+    void experiment_01_initial_state() {
+        _gamma_A = 1.67;
+        _particles_A = Particles(1000000, _nx, _ny, _size);
+        _particles_A.set_mass_for_each(1.0E-6);
         _particles_A.evenly_distribute();
         _particles_A.add_random_movements(0.05);
-    }
-    
-    void add_particles_B_evenly_distribute(int particles_number, double particle_mass, double adiabatic_index) {
-        _gamma_B = adiabatic_index;
-        _particles_B = Particles(particles_number);
-        _particles_B.set_mass_for_each(particle_mass);
-        _particles_B.set_borders(_size * _nx, _size * _ny, _size);
+
+        _gamma_B = 1.4;
+        _particles_B = Particles(1000000, _nx, _ny, _size);
+        _particles_B.set_mass_for_each(2.0E-6);
         _particles_B.evenly_distribute();
         _particles_B.add_random_movements(0.05);
+
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                _energy_A(y, x) = 0.05 * (x * y) + 2;
+                _energy_B(y, x) = 0.05 * (_nx - x) * (_ny - y) + 2 ;
+            }
+        }
+
+        set_minimal_mass(1.0E-6);
+        prepare_for_run();
+    }
+
+    void experiment_02_initial_state() {
+        // Diagonal shok wave with 25% of all particles in it
+
+        _gamma_A = 1.67;
+        _particles_A = Particles(1000000, _nx, _ny, _size);
+        _particles_A.set_mass_for_each(1.0E-6);
+
+        _gamma_B = 1.4;
+        _particles_B = Particles(1000000, _nx, _ny, _size);
+        _particles_B.set_mass_for_each(2.0E-6);
+
+        // 750'000 particles distributed randomly
+        _particles_A.evenly_distribute(0, 750000);
+        _particles_A.add_random_movements(0.1, 0, 750000);
+        // 250'000 pu on diagonal and given momentum
+        for (int i = 750000; i < 1000000; i++) {
+            double p;
+            double x;
+            double y;
+            do {
+                p = 1.0 * rand() / RAND_MAX;
+                x = 5 * _size * 2 * (p - 0.5);
+                y = _size * _ny * rand() / RAND_MAX;
+                x = x + y;
+            } while (x < 0 || x > _size * _nx);
+            _particles_A.set_coordinates(i, x, y);
+            _particles_A.set_velocity(i, p, -p);
+        }
+
+        // Same for "B" particles
+        _particles_B.evenly_distribute(0, 750000);
+        _particles_B.add_random_movements(0.1, 0, 750000);
+        for (int i = 750000; i < 1000000; i++) {
+            double p;   
+            double x;
+            double y;
+            do {
+                p = 1.0 * rand() / RAND_MAX;
+                x = 5 * _size * 2 * (p - 0.5);
+                y = _size * _ny * rand() / RAND_MAX;
+                x = x + y;
+            } while (x < 0 || x > _size * _nx);
+            _particles_B.set_coordinates(i, x, y);
+            _particles_B.set_velocity(i, p, -p);
+        }
+
+        // For all cells inner enrgy is roughly the same
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                _energy_A(y, x) = 1 + 0.01 * rand() / RAND_MAX;
+                _energy_B(y, x) = 1 + 0.01 * rand() / RAND_MAX ;
+            }
+        }
+
+        set_minimal_mass(1.0E-6);
+        prepare_for_run();
     }
 
     //------------------------------------------------------------------------
 
-    void initiate_energy_test_function_01();
+    void set_minimal_mass(double minimal_mass) {
+        _minim_mass = minimal_mass;
+    }
 
-    void initiate_energy_test_function_02();
+    bool cell_is_empty(int y, int x) {
+        return _mass_A(y, x) + _mass_B(y, x) < _minim_mass;
+    }
+
+    void prepare_for_run() {
+        s08_v_and_mass();
+    }
+
+    double sqr_sum(double a, double b) {
+        return a*a + b*b;
+    }
+
 
     //------------------------------------------------------------------------
 
@@ -83,7 +150,7 @@ public:
         return _size / (vx_max + vy_max + softening);
     }
 
-    void re_pressure() {
+    void s01_pressure() {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
                 double sA = (_gamma_A - 1) * _mass_A(y, x) * _energy_A(y, x);
@@ -122,35 +189,34 @@ public:
         }
     }
 
-    void re_v_tilda(double tau) {
+    void s02_v_tilda(double tau) {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                if (_mass_A(y, x) + _mass_B(y, x) < 1e-6) {
+                if (cell_is_empty(y, x)) {
                     _vx_tilda(y, x) = 0;
                     _vy_tilda(y, x) = 0;
-                } else {
-                    double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size);
-                    _vx_tilda(y, x) = _vx(y, x) + tau / rho / _size * (
-                        _pressure_shifted_x(y, x) - _pressure_shifted_x(y, x + 1));
-                    _vy_tilda(y, x) = _vy(y, x) + tau / rho / _size * (
-                        _pressure_shifted_y(y, x) - _pressure_shifted_y(y + 1, x));
+                    continue;
                 }
+                double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size);
+                _vx_tilda(y, x) = _vx(y, x) + tau / rho / _size * (
+                    _pressure_shifted_x(y, x) - _pressure_shifted_x(y, x + 1));
+                _vy_tilda(y, x) = _vy(y, x) + tau / rho / _size * (
+                    _pressure_shifted_y(y, x) - _pressure_shifted_y(y + 1, x));
             }
         }
     }
 
-    void re_w_energy() {
+    void s03_w_energy() {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
                 double potential = _mass_A(y, x) * _energy_A(y, x) + _mass_B(y, x) * _energy_B(y, x);
-                double kinetic = (_mass_A(y, x) + _mass_B(y, x)) * (
-                    _vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                double kinetic = (_mass_A(y, x) + _mass_B(y, x)) * sqr_sum(_vx(y, x), _vy(y, x)) / 2;
                 _w_energy(y, x) = (potential + kinetic) / (_size*_size);
             }
         }
     }
 
-    void re_v_shifted() {
+    void s04_v_shifted() {
         _vx_shifted.zeros();
         for (int y = 0; y < _ny; y++) {
             _vx_shifted(y, 0) = 0;
@@ -174,7 +240,7 @@ public:
         }
     }
 
-    void re_w_energy_tilda(double tau) {
+    void s05_w_energy_tilda(double tau) {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
                 _w_energy_tilda(y, x) = _w_energy(y, x) + tau / _size * 
@@ -186,10 +252,10 @@ public:
         }
     }
 
-    void re_energy_tilda() {
+    void s06_energy_tilda() {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                if (_mass_A(y, x) + _mass_B(y, x) <= 0.0000005) {
+                if (cell_is_empty(y, x)) {
                     _energy_A_tilda(y, x) = 0;
                     _energy_B_tilda(y, x) = 0;
                     _vx_tilda(y, x) = 0;
@@ -198,42 +264,22 @@ public:
                 }
 
                 double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size);
-                double energy_tilda = _w_energy_tilda(y, x) / rho - (
-                    _vx_tilda(y, x)*_vx_tilda(y, x) + _vy_tilda(y, x)*_vy_tilda(y, x)) / 2;
-                double energy = _w_energy(y, x) / rho - (
-                    _vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                double energy_tilda = _w_energy_tilda(y, x) / rho - sqr_sum(_vx_tilda(y, x), _vy_tilda(y, x)) / 2;
+                double energy = _w_energy(y, x) / rho - sqr_sum(_vx(y, x), _vy(y, x)) / 2;
                 double delta_energy = energy_tilda - energy;
 
                 _energy_A_tilda(y, x) = _energy_A(y, x) + delta_energy;                
                 _energy_B_tilda(y, x) = _energy_B(y, x) + delta_energy;    
             }
         }
-
-        double total_energy = 0;
-        for (int y = 0; y < _ny; y++) {
-            for (int x = 0; x < _nx; x++) {
-                double cell_energy = 0;
-                cell_energy += (_mass_A(y,x) + _mass_B(y,x)) * (_vx_tilda(y,x)*_vx_tilda(y,x) + _vy_tilda(y,x)*_vy_tilda(y,x))/2;
-                cell_energy += _mass_A(y,x) * _energy_A_tilda(y,x) + _mass_B(y,x) * _energy_B_tilda(y,x);
-                total_energy += cell_energy;
-                if (std::abs(cell_energy / (_size * _size) - _w_energy_tilda(y, x)) > 1.0E-7) {
-                    std::cout << "!\n";
-                    std::cout << (_mass_A(y,x) + _mass_B(y,x)) << "\n";
-                    std::cout << _pressure(y, x) << "\n";
-                    std::cout << cell_energy / (_size * _size) << "\n";
-                    std::cout << _w_energy_tilda(y, x) << "\n";
-                    std::cout << _w_energy(y, x) << "\n";
-                }
-            }
-        }
     }
 
-    void move_particles(double tau) {
+    void s07_move_particles(double tau) {
         _particles_A.set_energies_and_move(_vx, _vy, _vx_tilda, _vy_tilda, _energy_A_tilda, tau);
         _particles_B.set_energies_and_move(_vx, _vy, _vx_tilda, _vy_tilda, _energy_B_tilda, tau);
     }
 
-    void re_v_and_mass() {
+    void s08_v_and_mass() {
         Array impuls_x = Array(_ny, _nx);
         Array impuls_y = Array(_ny, _nx);
 
@@ -259,7 +305,7 @@ public:
 
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                if (_mass_A(y, x) + _mass_B(y, x) <= 0.0000005){
+                if (cell_is_empty(y, x)) {
                     _vx(y, x) = 0;
                     _vy(y, x) = 0;
                 } else {
@@ -273,7 +319,7 @@ public:
         impuls_y.free_space();
     }
 
-    void re_energy() {
+    void s09_energy() {
         Array w_tmp_A(_ny, _nx);
         Array w_tmp_B(_ny, _nx);
 
@@ -293,32 +339,24 @@ public:
 
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                if (_mass_A(y, x) < 0.0000005) {
+                if (_mass_A(y, x) < _minim_mass) {
                     _energy_A(y, x) = 0;
                 } else {
-                    _energy_A(y, x) = w_tmp_A(y, x) / _mass_A(y, x) - (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                    _energy_A(y, x) = w_tmp_A(y, x) / _mass_A(y, x) - sqr_sum(_vx(y, x), _vy(y, x)) / 2;
                 }
 
-                if (_mass_B(y, x) < 0.0000005) {
+                if (_mass_B(y, x) < _minim_mass) {
                     _energy_B(y, x) = 0;
                 } else {
-                    _energy_B(y, x) = w_tmp_B(y, x) / _mass_B(y, x) - (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                    _energy_B(y, x) = w_tmp_B(y, x) / _mass_B(y, x) - sqr_sum(_vx(y, x), _vy(y, x)) / 2;
                 }
                 
                 if (_energy_A(y, x) < 0 || _energy_B(y, x) < 0) {
-                    double energy = (w_tmp_A(y, x) + w_tmp_B(y, x)) / (_mass_A(y, x) + _mass_B(y, x)) - 
-                                     (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                    double energy = (w_tmp_A(y, x) + w_tmp_B(y, x)) / (_mass_A(y, x) + _mass_B(y, x)) 
+                        - sqr_sum(_vx(y, x), _vy(y, x)) / 2;
                     _energy_A(y, x) = energy;
                     _energy_B(y, x) = energy;       
                 }
-            }
-        }
-
-        double total_energy = 0;
-        for (int y = 0; y < _ny; y++) {
-            for (int x = 0; x < _nx; x++) {
-                total_energy += (_mass_A(y,x) + _mass_B(y,x)) * (_vx(y,x)*_vx(y,x) + _vy(y,x)*_vy(y,x))/2;
-                total_energy += _mass_A(y,x) * _energy_A(y,x) + _mass_B(y,x) * _energy_B(y,x);
             }
         }
 
@@ -326,120 +364,72 @@ public:
         w_tmp_B.free_space();
     }
 
-    //------------------------------------------------------------------------
-
-    void print_masses() {
-        std::cout << "# masses A:\n";
-        _mass_A.print();
-        std::cout << "# sum :" << _mass_A.sum() << "\n";
-        std::cout << "# masses B:\n";
-        _mass_B.print();
-        std::cout << "# sum :" << _mass_B.sum() << "\n";
-    }
-
-    void print_pressures(bool shifted = false) {
-        std::cout << "# pressure :\n";
-        _pressure.print();
-        if (shifted) {
-            std::cout << "# shifted x :\n";
-            _pressure_shifted_x.print();
-            std::cout << "# shifted y\n";
-            _pressure_shifted_y.print();
-        }
-    }
-
-    void print_v_tilda() {
-        std::cout << "vx tilda :\n";
-        _vx_tilda.print();
-        std::cout << "vy tilda :\n";
-        _vy_tilda.print();
-    }
-
-    void print_v(bool shifted = false) {
-        std::cout << "# vx :\n";
-        _vx.print();
-        std::cout << "# vy :\n";
-        _vy.print();
-        if (shifted) {
-            std::cout << "# shifted x :\n";
-            _vx_shifted.print();
-            std::cout << "# shifted y :\n";
-            _vy_shifted.print();
-        }
-    }
-
-    void print_energies(bool full = false) {
-        if (full) {
-            std::cout << "# energies :\n";
-            _w_energy.print();
-        }
-        std::cout << _w_energy.sum() << "\n";
-    }
-
-    void print_cell_state(int x, int y) {
-        std::cout << "# cell state\n";
-        std::cout << "  x:" << x << ", y:" << y << '\n';
-        std::cout << " MA:" << _mass_A(y, x) << ", MB:" << _mass_B(y, x) << '\n';
-        std::cout << " EA:" << _energy_A(y, x) << ", EB:" << _energy_B(y, x) << '\n';
-        std::cout << "  P:" << _pressure(y, x) << '\n';
-        std::cout << " P(x-1/2):" << _pressure_shifted_x(y, x) << ", P(x+1/2):" << _pressure_shifted_x(y, x + 1) << '\n';
-        std::cout << " vx:" << _vx(y, x) << '\n';
-        std::cout << " vx(x-1/2):" << _vx_shifted(y, x) << ", vx(x+1/2):" << _vx_shifted(y, x + 1) << '\n';
+    void make_one_step(double tau) {
+        s01_pressure();
+        s02_v_tilda(tau);
+        s03_w_energy();
+        s04_v_shifted();
+        s05_w_energy_tilda(tau);
+        s06_energy_tilda();
+        s07_move_particles(tau);
+        s08_v_and_mass();
+        s09_energy();
     }
 
     //------------------------------------------------------------------------
 
-    void write_energies(int shot) {
+    void write_energies(std::string folder, int shot) {
         std::string name;
-        name = "./results/energy_a" + std::to_string(shot) + ".txt";
+        name = "./" + folder + "/energy_a" + std::to_string(shot) + ".txt";
         _energy_A.write_in_file(name);
-        name = "./results/energy_b" + std::to_string(shot) + ".txt";
+        name = "./" + folder + "/energy_b" + std::to_string(shot) + ".txt";
         _energy_B.write_in_file(name);
     }
 
-    void write_w_energies(int shot) {
+    void write_w_energies(std::string folder, int shot) {
         std::string name;
-        name = "./results/energy" + std::to_string(shot) + ".txt";
+        name = "./" + folder +"/energy" + std::to_string(shot) + ".txt";
         _w_energy.write_in_file(name);
-        name = "./results/energy_tilda" + std::to_string(shot) + ".txt";
+        name = "./" + folder + "/energy_tilda" + std::to_string(shot) + ".txt";
         _w_energy_tilda.write_in_file(name);
     }
 
-    void write_masses(int shot) {
+    void write_masses(std::string folder, int shot) {
         std::string name;
-        name = "./results/mass_a" + std::to_string(shot) + ".txt";
+        name = "./" + folder + "/mass_a" + std::to_string(shot) + ".txt";
         _mass_A.write_in_file(name);
-        name = "./results/mass_b" + std::to_string(shot) + ".txt";
+        name = "./" + folder + "/mass_b" + std::to_string(shot) + ".txt";
         _mass_B.write_in_file(name);
     }
 
-    void write_pressure(int shot) {
+    void write_pressure(std::string folder, int shot) {
         std::string name;
-        name = "./results/pressure" + std::to_string(shot) + ".txt";
+        name = "./" + folder + "/pressure" + std::to_string(shot) + ".txt";
         _pressure.write_in_file(name);
     }
 
-    void write_v(int shot) {
+    void write_v(std::string folder, int shot) {
         std::string name;
-        name = "./results/vx" + std::to_string(shot) + ".txt";
+        name = "./" + folder + "/vx" + std::to_string(shot) + ".txt";
         _vx.write_in_file(name);
-        name = "./results/vy" + std::to_string(shot) + ".txt";
+        name = "./" + folder + "/vy" + std::to_string(shot) + ".txt";
         _vy.write_in_file(name);
     }
 
-    void write_v_tilda(int shot) {
-        std::string name;
-        name = "./results/vx_tilda" + std::to_string(shot) + ".txt";
-        _vx_tilda.write_in_file(name);
-        name = "./results/vy_tilda" + std::to_string(shot) + ".txt";
-        _vy_tilda.write_in_file(name);
+    void write_everything(std::string results_folder, int shot) {
+        write_masses(results_folder, shot);
+        write_energies(results_folder, shot);
+        write_w_energies(results_folder, shot);
+        write_pressure(results_folder, shot);
+        write_v(results_folder, shot);
     }
+
 
 private:
     double _size;
-    double _eps = 0;
     int _nx;
     int _ny;
+    double _minim_mass = 0;
 
     Particles _particles_A;
     Array _mass_A;
