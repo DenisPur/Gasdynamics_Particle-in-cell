@@ -47,24 +47,14 @@ public:
     void add_random_movements(double v_max, int i_from = -1, int i_to = -1) {
         if (i_from == -1) {
             for (int i = 0; i < _n; i++) {
-                _data(i, 3) = v_max * 2 * (rand() / RAND_MAX - 0.5);
-                _data(i, 4) = v_max * 2 * (rand() / RAND_MAX - 0.5);
+                _data(i, 3) += v_max * 2 * (rand() / RAND_MAX - 0.5);
+                _data(i, 4) += v_max * 2 * (rand() / RAND_MAX - 0.5);
             }
         } else {
             for (int i = i_from; i < i_to; i++) {
-                _data(i, 3) = v_max * 2 * (rand() / RAND_MAX - 0.5);
-                _data(i, 4) = v_max * 2 * (rand() / RAND_MAX - 0.5);
+                _data(i, 3) += v_max * 2 * (rand() / RAND_MAX - 0.5);
+                _data(i, 4) += v_max * 2 * (rand() / RAND_MAX - 0.5);
             }
-        }
-    }
-
-    void set_energies(Array inner_energy_array, Array vx_tilda_array, Array vy_tilda_array) {
-        for (int i = 0; i < _n; i++) {
-            int nx = std::floor(_data(i, 0) / _size);
-            int ny = std::floor(_data(i, 1) / _size);
-            double vx = vx_tilda_array(ny, nx);
-            double vy = vy_tilda_array(ny, nx);
-            _data(i, 5) = _data(i, 2) * (inner_energy_array(ny, nx) + (vx*vx + vy*vy) / 2);
         }
     }
 
@@ -80,7 +70,9 @@ public:
 
     //------------------------------------------------------------------------
 
-    void move_particles(Array vx_array, Array vy_array, Array vx_tilda_array, Array vy_tilda_array, double tau) {
+    void set_energies_and_move(Array vx_array, Array vy_array, 
+                               Array vx_tilda_array, Array vy_tilda_array,
+                               Array inner_energy_array, double tau) {
         for (int i = 0; i < _n; i++) {
             double x = _data(i, 0);
             double y = _data(i, 1);
@@ -91,23 +83,31 @@ public:
             double vx_tilda = vx_tilda_array(ny, nx);
             double vy_tilda = vy_tilda_array(ny, nx);
 
+            _data(i, 5) = _data(i, 2) * (inner_energy_array(ny, nx) + (vx_tilda*vx_tilda + vy_tilda*vy_tilda) / 2);
+
             x += tau * vx;
             y += tau * vy;
 
             if (x < 0) {
                 x = - x;
                 vx = - vx;
-            } else if (x > _x_max) {
+            } else if (x >= _x_max) {
                 x = 2 * _x_max - x;
                 vx = - vx;
+                if (x == _x_max) {
+                    x = x - 0.001;
+                }
             }
 
             if (y < 0) {
                 y = - y;
                 vy = - vy;
-            } else if (y > _y_max) {
+            } else if (y >= _y_max) {
                 y = 2 * _y_max - y;
                 vy = - vy;
+                if (y == _y_max) {
+                    y = y - 0.001;
+                }
             }
 
             _data(i, 0) = x;

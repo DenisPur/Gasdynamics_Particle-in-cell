@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
 #include <cmath>
+#include <algorithm>
 #include <string>
 #include "array.cpp"
 #include "particles.cpp"
@@ -88,14 +89,18 @@ public:
                 double sA = (_gamma_A - 1) * _mass_A(y, x) * _energy_A(y, x);
                 double sB = (_gamma_B - 1) * _mass_B(y, x) * _energy_B(y, x);
                 
-                _pressure(y, x) = (sA + sB) / (_size * _size);
+                _pressure(y, x) = std::max(0.0, (sA + sB) / (_size * _size));
             }
         }
 
         for (int y = 0; y < _ny; y++) {
             _pressure_shifted_x(y, 0) = _pressure(y, 0);
             for (int x = 1; x < _nx; x++) {
-                _pressure_shifted_x(y, x) = (_pressure(y, x - 1) + _pressure(y, x)) / 2;
+                if (_pressure(y, x - 1) * _pressure(y, x) <= 0) {
+                    _pressure_shifted_x(y, x) = 0;
+                } else {
+                    _pressure_shifted_x(y, x) = (_pressure(y, x - 1) + _pressure(y, x)) / 2;
+                }
             }
             _pressure_shifted_x(y, _nx) = _pressure(y, _nx - 1);
         }
@@ -105,7 +110,11 @@ public:
         }
         for (int y = 1; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                _pressure_shifted_y(y, x) = (_pressure(y - 1, x) + _pressure(y, x)) / 2;
+                if (_pressure(y - 1, x) * _pressure(y, x) <= 0) {
+                    _pressure_shifted_y(y, x) = 0;
+                } else {
+                    _pressure_shifted_y(y, x) = (_pressure(y - 1, x) + _pressure(y, x)) / 2;
+                }
             }
         }
         for (int x = 0; x < _nx; x++) {
@@ -116,11 +125,16 @@ public:
     void re_v_tilda(double tau) {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size) + _eps;
-                _vx_tilda(y, x) = _vx(y, x) + \
-                    tau / rho / _size * (_pressure_shifted_x(y, x) - _pressure_shifted_x(y, x + 1));
-                _vy_tilda(y, x) = _vy(y, x) + \
-                    tau / rho / _size * (_pressure_shifted_y(y, x) - _pressure_shifted_y(y + 1, x));
+                if (_mass_A(y, x) + _mass_B(y, x) < 1e-6) {
+                    _vx_tilda(y, x) = 0;
+                    _vy_tilda(y, x) = 0;
+                } else {
+                    double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size);
+                    _vx_tilda(y, x) = _vx(y, x) + tau / rho / _size * (
+                        _pressure_shifted_x(y, x) - _pressure_shifted_x(y, x + 1));
+                    _vy_tilda(y, x) = _vy(y, x) + tau / rho / _size * (
+                        _pressure_shifted_y(y, x) - _pressure_shifted_y(y + 1, x));
+                }
             }
         }
     }
@@ -129,8 +143,8 @@ public:
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
                 double potential = _mass_A(y, x) * _energy_A(y, x) + _mass_B(y, x) * _energy_B(y, x);
-                double kinetic = (_mass_A(y, x) + _mass_B(y, x)) * \
-                    (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                double kinetic = (_mass_A(y, x) + _mass_B(y, x)) * (
+                    _vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
                 _w_energy(y, x) = (potential + kinetic) / (_size*_size);
             }
         }
@@ -163,11 +177,11 @@ public:
     void re_w_energy_tilda(double tau) {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                _w_energy_tilda(y, x) = _w_energy(y, x) + tau / _size * ( \
-                    _vx_shifted(y, x) * _pressure_shifted_x(y, x) + \
-                    _vy_shifted(y, x) * _pressure_shifted_y(y, x) - \
-                    _vx_shifted(y, x + 1) * _pressure_shifted_x(y, x + 1) - \
-                    _vy_shifted(y + 1, x) * _pressure_shifted_y(y + 1, x));
+                _w_energy_tilda(y, x) = _w_energy(y, x) + tau / _size * 
+                    ( _vx_shifted(y, x) * _pressure_shifted_x(y, x)
+                    + _vy_shifted(y, x) * _pressure_shifted_y(y, x)
+                    - _vx_shifted(y, x + 1) * _pressure_shifted_x(y, x + 1)
+                    - _vy_shifted(y + 1, x) * _pressure_shifted_y(y + 1, x) );
             }
         }
     }
@@ -175,23 +189,48 @@ public:
     void re_energy_tilda() {
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size) + _eps;
-                double energy_tilda = _w_energy_tilda(y, x) / rho - \
-                    (_vx_tilda(y, x)*_vx_tilda(y, x) + _vy_tilda(y, x)*_vy_tilda(y, x)) / 2;
-                double delta_energy = energy_tilda - \
-                    (_energy_A(y, x) * _mass_A(y, x) + _energy_B(y, x) * _mass_B(y, x)) / (_mass_A(y, x) + _mass_B(y, x));
+                if (_mass_A(y, x) + _mass_B(y, x) <= 0.0000005) {
+                    _energy_A_tilda(y, x) = 0;
+                    _energy_B_tilda(y, x) = 0;
+                    _vx_tilda(y, x) = 0;
+                    _vy_tilda(y, x) = 0;
+                    continue;
+                }
+
+                double rho = (_mass_A(y, x) + _mass_B(y, x)) / (_size * _size);
+                double energy_tilda = _w_energy_tilda(y, x) / rho - (
+                    _vx_tilda(y, x)*_vx_tilda(y, x) + _vy_tilda(y, x)*_vy_tilda(y, x)) / 2;
+                double energy = _w_energy(y, x) / rho - (
+                    _vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                double delta_energy = energy_tilda - energy;
+
                 _energy_A_tilda(y, x) = _energy_A(y, x) + delta_energy;                
                 _energy_B_tilda(y, x) = _energy_B(y, x) + delta_energy;    
+            }
+        }
+
+        double total_energy = 0;
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                double cell_energy = 0;
+                cell_energy += (_mass_A(y,x) + _mass_B(y,x)) * (_vx_tilda(y,x)*_vx_tilda(y,x) + _vy_tilda(y,x)*_vy_tilda(y,x))/2;
+                cell_energy += _mass_A(y,x) * _energy_A_tilda(y,x) + _mass_B(y,x) * _energy_B_tilda(y,x);
+                total_energy += cell_energy;
+                if (std::abs(cell_energy / (_size * _size) - _w_energy_tilda(y, x)) > 1.0E-7) {
+                    std::cout << "!\n";
+                    std::cout << (_mass_A(y,x) + _mass_B(y,x)) << "\n";
+                    std::cout << _pressure(y, x) << "\n";
+                    std::cout << cell_energy / (_size * _size) << "\n";
+                    std::cout << _w_energy_tilda(y, x) << "\n";
+                    std::cout << _w_energy(y, x) << "\n";
+                }
             }
         }
     }
 
     void move_particles(double tau) {
-        _particles_A.set_energies(_energy_A_tilda, _vx_tilda, _vy_tilda);
-        _particles_B.set_energies(_energy_B_tilda, _vx_tilda, _vy_tilda);
-
-        _particles_A.move_particles(_vx, _vy, _vx_tilda, _vy_tilda, tau);
-        _particles_B.move_particles(_vx, _vy, _vx_tilda, _vy_tilda, tau);
+        _particles_A.set_energies_and_move(_vx, _vy, _vx_tilda, _vy_tilda, _energy_A_tilda, tau);
+        _particles_B.set_energies_and_move(_vx, _vy, _vx_tilda, _vy_tilda, _energy_B_tilda, tau);
     }
 
     void re_v_and_mass() {
@@ -202,9 +241,6 @@ public:
         for (int i = 0; i < _particles_A.len(); i++) {
             int x = std::floor(_particles_A(i, 0) / _size);
             int y = std::floor(_particles_A(i, 1) / _size);
-            if (x == -2147483648) {
-                std::cout << _particles_A(i, 0) << '\n';
-            }
 
             _mass_A(y, x) += _particles_A(i, 2);
             impuls_x(y, x) += _particles_A(i, 3) * _particles_A(i, 2);
@@ -223,8 +259,13 @@ public:
 
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                _vx(y, x) = impuls_x(y, x) / (_mass_A(y, x) + _mass_B(y, x) + _eps);
-                _vy(y, x) = impuls_y(y, x) / (_mass_A(y, x) + _mass_B(y, x) + _eps);
+                if (_mass_A(y, x) + _mass_B(y, x) <= 0.0000005){
+                    _vx(y, x) = 0;
+                    _vy(y, x) = 0;
+                } else {
+                    _vx(y, x) = impuls_x(y, x) / (_mass_A(y, x) + _mass_B(y, x));
+                    _vy(y, x) = impuls_y(y, x) / (_mass_A(y, x) + _mass_B(y, x));
+                }
             }
         }
 
@@ -233,37 +274,56 @@ public:
     }
 
     void re_energy() {
-        Array w_tmp(_ny, _nx);
+        Array w_tmp_A(_ny, _nx);
+        Array w_tmp_B(_ny, _nx);
 
         for (int i = 0; i < _particles_A.len(); i++) {
             int x = std::floor(_particles_A(i, 0) / _size);
             int y = std::floor(_particles_A(i, 1) / _size);
 
-            w_tmp(y, x) += _particles_A(i, 5); // NOT DIVIDING BY H^2
+            w_tmp_A(y, x) += _particles_A(i, 5); // NOT DIVIDING BY H^2
         }
-
-        for (int y = 0; y < _ny; y++) {
-            for (int x = 0; x < _nx; x++) {
-                _energy_A(y, x) = w_tmp(y, x) / (_mass_A(y, x) + _eps) - (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
-            }
-        }
-
-        w_tmp.zeros();
 
         for (int i = 0; i < _particles_B.len(); i++) {
             int x = std::floor(_particles_B(i, 0) / _size);
             int y = std::floor(_particles_B(i, 1) / _size);
 
-            w_tmp(y, x) += _particles_B(i, 5); // NOT DIVIDING BY H^2
+            w_tmp_B(y, x) += _particles_B(i, 5); // NOT DIVIDING BY H^2
         }
 
         for (int y = 0; y < _ny; y++) {
             for (int x = 0; x < _nx; x++) {
-                _energy_B(y, x) = w_tmp(y, x) / (_mass_B(y, x) + _eps) - (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                if (_mass_A(y, x) < 0.0000005) {
+                    _energy_A(y, x) = 0;
+                } else {
+                    _energy_A(y, x) = w_tmp_A(y, x) / _mass_A(y, x) - (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                }
+
+                if (_mass_B(y, x) < 0.0000005) {
+                    _energy_B(y, x) = 0;
+                } else {
+                    _energy_B(y, x) = w_tmp_B(y, x) / _mass_B(y, x) - (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                }
+                
+                if (_energy_A(y, x) < 0 || _energy_B(y, x) < 0) {
+                    double energy = (w_tmp_A(y, x) + w_tmp_B(y, x)) / (_mass_A(y, x) + _mass_B(y, x)) - 
+                                     (_vx(y, x)*_vx(y, x) + _vy(y, x)*_vy(y, x)) / 2;
+                    _energy_A(y, x) = energy;
+                    _energy_B(y, x) = energy;       
+                }
             }
         }
 
-        w_tmp.free_space();
+        double total_energy = 0;
+        for (int y = 0; y < _ny; y++) {
+            for (int x = 0; x < _nx; x++) {
+                total_energy += (_mass_A(y,x) + _mass_B(y,x)) * (_vx(y,x)*_vx(y,x) + _vy(y,x)*_vy(y,x))/2;
+                total_energy += _mass_A(y,x) * _energy_A(y,x) + _mass_B(y,x) * _energy_B(y,x);
+            }
+        }
+
+        w_tmp_A.free_space();
+        w_tmp_B.free_space();
     }
 
     //------------------------------------------------------------------------
@@ -316,6 +376,17 @@ public:
         std::cout << _w_energy.sum() << "\n";
     }
 
+    void print_cell_state(int x, int y) {
+        std::cout << "# cell state\n";
+        std::cout << "  x:" << x << ", y:" << y << '\n';
+        std::cout << " MA:" << _mass_A(y, x) << ", MB:" << _mass_B(y, x) << '\n';
+        std::cout << " EA:" << _energy_A(y, x) << ", EB:" << _energy_B(y, x) << '\n';
+        std::cout << "  P:" << _pressure(y, x) << '\n';
+        std::cout << " P(x-1/2):" << _pressure_shifted_x(y, x) << ", P(x+1/2):" << _pressure_shifted_x(y, x + 1) << '\n';
+        std::cout << " vx:" << _vx(y, x) << '\n';
+        std::cout << " vx(x-1/2):" << _vx_shifted(y, x) << ", vx(x+1/2):" << _vx_shifted(y, x + 1) << '\n';
+    }
+
     //------------------------------------------------------------------------
 
     void write_energies(int shot) {
@@ -366,7 +437,7 @@ public:
 
 private:
     double _size;
-    double _eps = 1e-12;
+    double _eps = 0;
     int _nx;
     int _ny;
 

@@ -28,40 +28,44 @@ void Board_2IdealGases::initiate_energy_test_function_02() {
     _particles_B.set_mass_for_each(0.000002);
     _particles_B.set_borders(_size * _nx, _size * _ny, _size);
 
-    _particles_A.evenly_distribute(0, 800000);
-    _particles_A.add_random_movements(0, 800000);
+    _particles_A.evenly_distribute(0, 750000);
+    _particles_A.add_random_movements(0.01, 0, 750000);
 
-    _particles_B.evenly_distribute(0, 800000);
-    _particles_B.add_random_movements(0, 800000);
+    _particles_B.evenly_distribute(0, 750000);
+    _particles_B.add_random_movements(0.01, 0, 750000);
 
-    for (int i = 800000; i < 1000000; i++) {
+    for (int i = 750000; i < 1000000; i++) {
+        double p;
         double x;
         double y;
         do {
-            x = 0.3 * rand() / RAND_MAX - 0.15;
+            p = 1.0 * rand() / RAND_MAX;
+            x = 0.3 * p - 0.15;
             y = 20.0 * rand() / RAND_MAX;
             x = x + y;
         } while (x < 0 || x > 20.0);
         _particles_A.set_coordinates(i, x, y);
-        _particles_A.set_velocity(i, 1.0, -1.0);
+        _particles_A.set_velocity(i, p, -p);
     }
 
-    for (int i = 800000; i < 1000000; i++) {
+    for (int i = 750000; i < 1000000; i++) {
+        double p;   
         double x;
         double y;
         do {
-            x = 0.3 * rand() / RAND_MAX - 0.15;
+            p = 1.0 * rand() / RAND_MAX;
+            x = 0.3 * p - 0.15;
             y = 20.0 * rand() / RAND_MAX;
             x = x + y;
         } while (x < 0 || x > 20.0);
         _particles_B.set_coordinates(i, x, y);
-        _particles_B.set_velocity(i, 1.0, -1.0);
+        _particles_B.set_velocity(i, p, -p);
     }
 
     for (int y = 0; y < _ny; y++) {
         for (int x = 0; x < _nx; x++) {
-            _energy_A(y, x) = 0.1 + 0.03 * rand() / RAND_MAX;
-            _energy_B(y, x) = 0.1 + 0.03 * rand() / RAND_MAX ;
+            _energy_A(y, x) = 1 + 0.01 * rand() / RAND_MAX;
+            _energy_B(y, x) = 1 + 0.01 * rand() / RAND_MAX ;
         }
     }
 }
@@ -72,10 +76,11 @@ void make_n_steps(Board_2IdealGases* b, int n) {
     int shot = 0;
 
     for (int i = 0; i < n; i++) {
-        tau = b->get_tau_max();
+        tau = b->get_tau_max() / 2;
         time += tau;        
-        std::cout << "# tau :" << tau << "\n";
-
+        std::cout << "# " << i << "\n";
+        std::cout << " tau :" << tau << "\n";
+        
         b->re_pressure();
         b->re_v_tilda(tau);
         b->re_w_energy();
@@ -85,8 +90,8 @@ void make_n_steps(Board_2IdealGases* b, int n) {
         b->move_particles(tau);
         b->re_v_and_mass();
         b->re_energy();
-        
-        if (i % 1 == 0) {
+
+        if (i % 50 == 0) {
             std::ofstream timestems("./results/timesteps.txt", std::ios::app);
             timestems << time << '\n';
             timestems.close();
@@ -96,7 +101,6 @@ void make_n_steps(Board_2IdealGases* b, int n) {
             b->write_w_energies(shot);
             b->write_pressure(shot);
             b->write_v(shot);
-            b->write_v_tilda(shot);
             shot++;
         }
     }
@@ -108,7 +112,7 @@ int main() {
     b.initiate_energy_test_function_02();
     b.re_v_and_mass();
 
-    make_n_steps(&b, 10);
+    make_n_steps(&b, 2501);
 
     return 0;
 }
